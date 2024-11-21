@@ -107,6 +107,7 @@ The following arguments are supported:
 * `path` - The path set for the session cookie. Defaults to `'/'`.
 * `https_only` - Indicate that Secure flag should be set (can be used with HTTPS only). Defaults to `False`.
 * `domain` - Domain of the cookie used to share cookie between subdomains or cross-domains. The browser defaults the domain to the same host that set the cookie, excluding subdomains ([reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#domain_attribute)).
+* `only_on_change` - Indicate that only on change should the session data be re-signed and the cookie updated. Defaults to `False`.
 
 
 ```python

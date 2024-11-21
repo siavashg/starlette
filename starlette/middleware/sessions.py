@@ -23,6 +23,7 @@ class SessionMiddleware:
         same_site: typing.Literal["lax", "strict", "none"] = "lax",
         https_only: bool = False,
         domain: str | None = None,
+        only_on_change: bool = False,
     ) -> None:
         self.app = app
         self.signer = itsdangerous.TimestampSigner(str(secret_key))
@@ -34,6 +35,7 @@ class SessionMiddleware:
             self.security_flags += "; secure"
         if domain is not None:
             self.security_flags += f"; domain={domain}"
+        self.only_on_change = only_on_change
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] not in ("http", "websocket"):  # pragma: no cover
@@ -43,11 +45,13 @@ class SessionMiddleware:
         connection = HTTPConnection(scope)
         initial_session_was_empty = True
 
+        original_data = None
         if self.session_cookie in connection.cookies:
             data = connection.cookies[self.session_cookie].encode("utf-8")
             try:
                 data = self.signer.unsign(data, max_age=self.max_age)
                 scope["session"] = json.loads(b64decode(data))
+                original_data = scope["session"].copy() if self.only_on_change else None
                 initial_session_was_empty = False
             except BadSignature:
                 scope["session"] = {}
@@ -59,16 +63,17 @@ class SessionMiddleware:
                 if scope["session"]:
                     # We have session data to persist.
                     data = b64encode(json.dumps(scope["session"]).encode("utf-8"))
-                    data = self.signer.sign(data)
-                    headers = MutableHeaders(scope=message)
-                    header_value = "{session_cookie}={data}; path={path}; {max_age}{security_flags}".format(
-                        session_cookie=self.session_cookie,
-                        data=data.decode("utf-8"),
-                        path=self.path,
-                        max_age=f"Max-Age={self.max_age}; " if self.max_age else "",
-                        security_flags=self.security_flags,
-                    )
-                    headers.append("Set-Cookie", header_value)
+                    if not self.only_on_change or original_data != scope["session"]:
+                        data = self.signer.sign(data)
+                        headers = MutableHeaders(scope=message)
+                        header_value = "{session_cookie}={data}; path={path}; {max_age}{security_flags}".format(
+                            session_cookie=self.session_cookie,
+                            data=data.decode("utf-8"),
+                            path=self.path,
+                            max_age=f"Max-Age={self.max_age}; " if self.max_age else "",
+                            security_flags=self.security_flags,
+                        )
+                        headers.append("Set-Cookie", header_value)
                 elif not initial_session_was_empty:
                     # The session has been cleared.
                     headers = MutableHeaders(scope=message)

@@ -198,3 +198,25 @@ def test_domain_cookie(test_client_factory: TestClientFactory) -> None:
     client.cookies.delete("session")
     response = client.get("/view_session")
     assert response.json() == {"session": {}}
+
+
+def test_only_on_change(test_client_factory: TestClientFactory) -> None:
+    app = Starlette(
+        routes=[
+            Route("/view_session", endpoint=view_session),
+            Route("/update_session", endpoint=update_session, methods=["POST"]),
+        ],
+        middleware=[Middleware(SessionMiddleware, secret_key="example", only_on_change=True)],
+    )
+
+    client: TestClient = test_client_factory(app)
+
+    response = client.post("/update_session", json={"some": "data"})
+    assert "set-cookie" in response.headers
+
+    # no cookie is set if the session is not changed
+    response = client.post("/update_session", json={"some": "data"})
+    assert "set-cookie" not in response.headers
+
+    response = client.post("/update_session", json={"some": "other data"})
+    assert "set-cookie" in response.headers
